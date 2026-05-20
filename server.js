@@ -32,12 +32,12 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// ---------------- HEALTH CHECK ----------------
+// ---------------- HEALTH ----------------
 app.get("/api/health", (req, res) => {
   res.json({ status: "UP" });
 });
 
-// ---------------- DB TEST (IMPORTANT) ----------------
+// ---------------- DB TEST ----------------
 app.get("/api/db-test", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT 1 + 1 AS result");
@@ -60,7 +60,7 @@ app.get("/api/config", async (req, res) => {
     const [rows] = await pool.query(
       "SELECT * FROM site_config WHERE id = 1"
     );
-    res.json(rows[0]);
+    res.json(rows[0] || null);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -91,11 +91,11 @@ app.post("/api/config", async (req, res) => {
         c.heroImage,
         c.footerText,
         c.logoImage,
-        JSON.stringify(c.socialLinks),
+        JSON.stringify(c.socialLinks || []),
         c.exploreTitle,
-        JSON.stringify(c.exploreLinks),
+        JSON.stringify(c.exploreLinks || []),
         c.supportTitle,
-        JSON.stringify(c.supportLinks),
+        JSON.stringify(c.supportLinks || []),
       ]
     );
 
@@ -143,7 +143,7 @@ app.post("/api/events", async (req, res) => {
       ]
     );
 
-    res.json(e);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -185,7 +185,9 @@ app.put("/api/events/:id", async (req, res) => {
 
 app.delete("/api/events/:id", async (req, res) => {
   try {
-    await pool.query("DELETE FROM events WHERE id=?", [req.params.id]);
+    await pool.query("DELETE FROM events WHERE id=?", [
+      req.params.id,
+    ]);
     res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -235,13 +237,13 @@ app.get("/api/audit", async (req, res) => {
   }
 });
 
-// ---------------- FRONTEND FALLBACK (FIXED) ----------------
-// IMPORTANT: prevents crashing from "*" route error
+// ---------------- FRONTEND FALLBACK ----------------
 app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// ---------------- START SERVER ----------------
+// ---------------- START ----------------
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
+  console.log("DB TEST: /api/db-test");
 });
