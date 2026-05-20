@@ -120,35 +120,25 @@ const CampusApp: React.FC = () => {
           safeFetch('config')
         ]);
         
-        // Database is the primary source
-        if (ev && ev.length > 0) {
-          setEvents(ev);
-        } else {
-          // If database is empty, seed with initial mock events (for demo)
-          setEvents(initialMockEvents);
-        }
-
-        if (users && users.length > 0) {
-          setUsersList(users);
-        } else {
-          setUsersList([
-            { id: 'u1', name: 'Master Admin', email: 'master@campus.edu', password: 'master', role: 'MasterAdmin', avatar: 'https://i.pravatar.cc/150?u=master' },
-            { id: 'u2', name: 'Alex Johnson', email: 'alex@student.edu', password: 'student', role: 'Student', avatar: 'https://i.pravatar.cc/150?u=alex' },
-            { id: 'u3', name: 'Staff Admin', email: 'admin@campus.edu', password: 'admin', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=admin' },
-          ]);
-        }
-
+        // Strict Database Protocol: Data displayed is strictly from the Aiven node
+        if (ev) setEvents(ev);
+        if (users) setUsersList(users);
         if (msg) setMessages(msg);
         if (logs) setAuditLogs(logs);
-        if (config && Object.keys(config).length) setHomeConfig(config);
+        if (config && Object.keys(config).length) {
+          // Parse JSON strings from database if necessary
+          const parsedConfig = { ...config };
+          if (typeof config.socialLinks === 'string') parsedConfig.socialLinks = JSON.parse(config.socialLinks);
+          if (typeof config.exploreLinks === 'string') parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
+          if (typeof config.supportLinks === 'string') parsedConfig.supportLinks = JSON.parse(config.supportLinks);
+          setHomeConfig(parsedConfig);
+        }
+        
       } catch (err) {
-        console.warn('DATABASE OFFLINE: Using internal protocols.');
-        setEvents(initialMockEvents);
-        setUsersList([
-          { id: 'u1', name: 'Master Admin', email: 'master@campus.edu', password: 'master', role: 'MasterAdmin', avatar: 'https://i.pravatar.cc/150?u=master' },
-          { id: 'u2', name: 'Alex Johnson', email: 'alex@student.edu', password: 'student', role: 'Student', avatar: 'https://i.pravatar.cc/150?u=alex' },
-          { id: 'u3', name: 'Staff Admin', email: 'admin@campus.edu', password: 'admin', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=admin' },
-        ]);
+        console.error('DATABASE NODE SYNC FAILURE. Verify Aiven Cloud connectivity.');
+        // Fallback to local cache if DB is completely unreachable
+        const localEvents = localStorage.getItem('cp_events');
+        if (localEvents) setEvents(JSON.parse(localEvents));
       }
       setIsLoaded(true);
     };
