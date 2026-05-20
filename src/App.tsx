@@ -128,9 +128,9 @@ const CampusApp: React.FC = () => {
         if (config && Object.keys(config).length) {
           // Parse JSON strings from database if necessary
           const parsedConfig = { ...config };
-          if (typeof config.socialLinks === 'string') parsedConfig.socialLinks = JSON.parse(config.socialLinks);
-          if (typeof config.exploreLinks === 'string') parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
-          if (typeof config.supportLinks === 'string') parsedConfig.supportLinks = JSON.parse(config.supportLinks);
+          if (typeof config.socialLinks === 'string' && config.socialLinks) parsedConfig.socialLinks = JSON.parse(config.socialLinks);
+          if (typeof config.exploreLinks === 'string' && config.exploreLinks) parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
+          if (typeof config.supportLinks === 'string' && config.supportLinks) parsedConfig.supportLinks = JSON.parse(config.supportLinks);
           setHomeConfig(parsedConfig);
         }
         
@@ -142,7 +142,12 @@ const CampusApp: React.FC = () => {
       }
       setIsLoaded(true);
     };
+
     fetchData();
+    
+    // Real-Time Sync Protocol: Poll Aiven Node every 15 seconds to keep all devices updated
+    const syncInterval = setInterval(fetchData, 15000);
+    return () => clearInterval(syncInterval);
   }, []);
 
   const addLog = async (type: AuditLog['type'], action: string, details: string) => {
