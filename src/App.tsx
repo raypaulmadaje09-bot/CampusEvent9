@@ -108,7 +108,8 @@ const CampusApp: React.FC = () => {
           try {
             const r = await fetch(`${API_URL}/${endpoint}`);
             if (!r.ok) return null;
-            return await r.json();
+            const data = await r.json();
+            return data;
           } catch (e) { return null; }
         };
 
@@ -120,33 +121,39 @@ const CampusApp: React.FC = () => {
           safeFetch('config')
         ]);
         
-        // Strict Database Protocol: Data displayed is strictly from the Aiven node
-        if (ev) setEvents(ev);
-        if (users) setUsersList(users);
-        if (msg) setMessages(msg);
-        if (logs) setAuditLogs(logs);
-        if (config && Object.keys(config).length) {
-          // Parse JSON strings from database if necessary
+        // Database is the sole Source of Truth
+        // Only update if we received a valid array/object from the server
+        if (Array.isArray(ev)) {
+          setEvents(ev.length > 0 ? ev : []); 
+        }
+        
+        if (Array.isArray(users) && users.length > 0) {
+          setUsersList(users);
+        }
+
+        if (Array.isArray(msg)) setMessages(msg);
+        if (Array.isArray(logs)) setAuditLogs(logs);
+        
+        if (config && Object.keys(config).length > 0) {
           const parsedConfig = { ...config };
-          if (typeof config.socialLinks === 'string' && config.socialLinks) parsedConfig.socialLinks = JSON.parse(config.socialLinks);
-          if (typeof config.exploreLinks === 'string' && config.exploreLinks) parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
-          if (typeof config.supportLinks === 'string' && config.supportLinks) parsedConfig.supportLinks = JSON.parse(config.supportLinks);
+          try {
+            if (typeof config.socialLinks === 'string') parsedConfig.socialLinks = JSON.parse(config.socialLinks);
+            if (typeof config.exploreLinks === 'string') parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
+            if (typeof config.supportLinks === 'string') parsedConfig.supportLinks = JSON.parse(config.supportLinks);
+          } catch (e) { console.error('CMS Parsing Error:', e); }
           setHomeConfig(parsedConfig);
         }
         
       } catch (err) {
-        console.error('DATABASE NODE SYNC FAILURE. Verify Aiven Cloud connectivity.');
-        // Fallback to local cache if DB is completely unreachable
-        const localEvents = localStorage.getItem('cp_events');
-        if (localEvents) setEvents(JSON.parse(localEvents));
+        console.error('DATABASE NODE SYNC FAILURE.');
       }
       setIsLoaded(true);
     };
 
     fetchData();
     
-    // Real-Time Sync Protocol: Poll Aiven Node every 15 seconds to keep all devices updated
-    const syncInterval = setInterval(fetchData, 15000);
+    // High-Frequency Real-Time Sync Protocol: Poll Aiven Node every 5 seconds
+    const syncInterval = setInterval(fetchData, 5000);
     return () => clearInterval(syncInterval);
   }, []);
 
