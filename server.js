@@ -16,10 +16,10 @@ const PORT = process.env.PORT || 5000;
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
-// Build folder
+// ---------------- STATIC FRONTEND ----------------
 app.use(express.static(path.join(__dirname, "dist")));
 
-// MySQL pool
+// ---------------- MYSQL POOL ----------------
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -32,15 +32,34 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// ---------------- HEALTH ----------------
+// ---------------- HEALTH CHECK ----------------
 app.get("/api/health", (req, res) => {
   res.json({ status: "UP" });
+});
+
+// ---------------- DB TEST (IMPORTANT) ----------------
+app.get("/api/db-test", async (req, res) => {
+  try {
+    const [rows] = await pool.query("SELECT 1 + 1 AS result");
+
+    res.json({
+      db: "connected",
+      result: rows[0].result,
+    });
+  } catch (err) {
+    res.status(500).json({
+      db: "failed",
+      error: err.message,
+    });
+  }
 });
 
 // ---------------- CONFIG ----------------
 app.get("/api/config", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM site_config WHERE id=1");
+    const [rows] = await pool.query(
+      "SELECT * FROM site_config WHERE id = 1"
+    );
     res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -89,7 +108,9 @@ app.post("/api/config", async (req, res) => {
 // ---------------- EVENTS ----------------
 app.get("/api/events", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM events ORDER BY date DESC");
+    const [rows] = await pool.query(
+      "SELECT * FROM events ORDER BY date DESC"
+    );
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -214,14 +235,13 @@ app.get("/api/audit", async (req, res) => {
   }
 });
 
-// ---------------- FRONTEND FIX (IMPORTANT) ----------------
-// ❌ DO NOT use app.get('*')
-// ✅ use safe fallback instead:
-app.use((req, res) => {
+// ---------------- FRONTEND FALLBACK (FIXED) ----------------
+// IMPORTANT: prevents crashing from "*" route error
+app.get(/^\/(?!api).*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
-// START
+// ---------------- START SERVER ----------------
 app.listen(PORT, () => {
   console.log("Server running on port", PORT);
 });
