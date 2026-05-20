@@ -1,226 +1,165 @@
-import express from "express";
-import cors from "cors";
-import mysql from "mysql2/promise";
-import dotenv from "dotenv";
-import path from "path";
-import { fileURLToPath } from "url";
+import React, { useState, useMemo, useEffect } from "react";
+import Navbar from "./components/Navbar";
+import Filters from "./components/Filters";
+import EventCard from "./components/EventCard";
+import EventModal from "./components/EventModal";
+import CalendarView from "./components/CalendarView";
+import AdminDashboard from "./components/AdminDashboard";
+import FeedbackModal from "./components/FeedbackModal";
+import StudentSupport from "./components/StudentSupport";
+import EventRequestModal from "./components/EventRequestModal";
+import Footer from "./components/Footer";
+import { mockEvents as initialMockEvents } from "./data/mockEvents";
+import { CampusEvent, FeedbackMessage, User, AuditLog } from "./types";
+import { AuthProvider, useAuth } from "./context/AuthContext";
+import LoginModal from "./components/LoginModal";
 
-dotenv.config();
+const API_URL =
+  import.meta.env.VITE_API_URL ||
+  (window.location.hostname === "localhost"
+    ? "http://localhost:5000/api"
+    : "/api");
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const CampusApp: React.FC = () => {
+  const { user, isAdmin, logout, refreshUser } = useAuth();
 
-const app = express();
-const PORT = process.env.PORT || 5000;
+  const [theme, setTheme] = useState<"light" | "dark">("light");
+  const [viewMode, setViewMode] = useState<"grid" | "calendar">("calendar");
+  const [selectedCategory, setSelectedCategory] = useState("All");
+  const [selectedEvent, setSelectedEvent] = useState<CampusEvent | null>(null);
 
-app.use(cors());
-app.use(express.json({ limit: "50mb" }));
+  const [events, setEvents] = useState<CampusEvent[]>([]);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [messages, setMessages] = useState<FeedbackMessage[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [categories, setCategories] = useState<string[]>([
+    "Academic",
+    "Social",
+    "Sports",
+  ]);
 
-// static frontend build
-app.use(express.static(path.join(__dirname, "dist")));
+  const [homeConfig, setHomeConfig] = useState<any>({});
 
-// MYSQL CONNECTION
-const pool = mysql.createPool({
-  host: process.env.DB_HOST,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-  database: process.env.DB_NAME,
-  port: process.env.DB_PORT,
-  ssl: { rejectUnauthorized: false },
-  waitForConnections: true,
-  connectionLimit: 10,
-});
+  const [isLoaded, setIsLoaded] = useState(false);
+  const [isLoginModalOpen, setIsLoginModalOpen] = useState(false);
+  const [isFeedbackModalOpen, setIsFeedbackModalOpen] = useState(false);
+  const [isEventRequestModalOpen, setIsEventRequestModalOpen] = useState(false);
+  const [isStudentSupportOpen, setIsStudentSupportOpen] = useState(false);
+  const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
-// ---------------- HEALTH ----------------
-app.get("/api/health", (req, res) => {
-  res.json({ status: "UP" });
-});
+  // ---------------- FETCH FROM DB (ONLY SOURCE OF TRUTH) ----------------
+  useEffect(() => {
+    const fetchData = async () => {
+      try {
+        const [ev, users, msg, logs, config] = await Promise.all([
+          fetch(`${API_URL}/events`).then((r) => r.json()),
+          fetch(`${API_URL}/users`).then((r) => r.json()),
+          fetch(`${API_URL}/feedback`).then((r) => r.json()),
+          fetch(`${API_URL}/audit`).then((r) => r.json()),
+          fetch(`${API_URL}/config`).then((r) => r.json()),
+        ]);
 
-// ---------------- DB TEST ----------------
-app.get("/api/db-test", async (req, res) => {
-  try {
-    const [rows] = await pool.query("SELECT 1 + 1 AS result");
-    res.json({ db: "connected", result: rows[0].result });
-  } catch (err) {
-    res.status(500).json({ db: "failed", error: err.message });
-  }
-});
+        setEvents(ev || []);
+        setUsersList(users || []);
+        setMessages(msg || []);
+        setAuditLogs(logs || []);
+        setHomeConfig(config || {});
+      } catch (err) {
+        console.error("API error:", err);
+        setEvents(initialMockEvents);
+      }
 
-// ---------------- EVENTS ----------------
-app.get("/api/events", async (req, res) => {
-  try {
-    const [rows] = await pool.query("SELECT * FROM events ORDER BY date DESC");
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      setIsLoaded(true);
+    };
 
-app.post("/api/events", async (req, res) => {
-  try {
-    const e = req.body;
+    fetchData();
+  }, []);
 
-    await pool.query(
-      `INSERT INTO events
-      (id,title,description,date,startTime,endTime,location,category,organizer,attendees,image,isPopular,isLive,status)
-      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [
-        e.id,
-        e.title,
-        e.description,
-        e.date,
-        e.startTime,
-        e.endTime,
-        e.location,
-        e.category,
-        e.organizer,
-        e.attendees || 0,
-        e.image,
-        e.isPopular ? 1 : 0,
-        e.isLive ? 1 : 0,
-        e.status || "Pending",
-      ]
+  // ---------------- EVENTS ----------------
+  const handleAddEvent = async (newEvent: any) => {
+    const eventWithStatus = {
+      ...newEvent,
+      status: isAdmin ? "Approved" : "Pending",
+    };
+
+    setEvents((prev) => [eventWithStatus, ...prev]);
+
+    await fetch(`${API_URL}/events`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(eventWithStatus),
+    });
+  };
+
+  const handleUpdateEvent = async (updated: CampusEvent) => {
+    setEvents((prev) =>
+      prev.map((e) => (e.id === updated.id ? updated : e))
     );
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+    await fetch(`${API_URL}/events/${updated.id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(updated),
+    });
+  };
 
-app.put("/api/events/:id", async (req, res) => {
-  try {
-    const e = req.body;
+  const handleDeleteEvent = async (id: string) => {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
 
-    await pool.query(
-      `UPDATE events SET
-      title=?,description=?,date=?,startTime=?,endTime=?,
-      location=?,category=?,organizer=?,image=?,
-      isPopular=?,isLive=?,status=?
-      WHERE id=?`,
-      [
-        e.title,
-        e.description,
-        e.date,
-        e.startTime,
-        e.endTime,
-        e.location,
-        e.category,
-        e.organizer,
-        e.image,
-        e.isPopular ? 1 : 0,
-        e.isLive ? 1 : 0,
-        e.status,
-        req.params.id,
-      ]
-    );
+    await fetch(`${API_URL}/events/${id}`, {
+      method: "DELETE",
+    });
+  };
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  if (!isLoaded) return null;
 
-app.delete("/api/events/:id", async (req, res) => {
-  try {
-    await pool.query("DELETE FROM events WHERE id=?", [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+  return (
+    <div className={theme === "dark" ? "bg-black text-white" : "bg-white"}>
+      <Navbar
+        onLoginClick={() => setIsLoginModalOpen(true)}
+        theme={theme}
+        toggleTheme={() =>
+          setTheme((p) => (p === "light" ? "dark" : "light"))
+        }
+      />
 
-// ---------------- USERS ----------------
-app.get("/api/users", async (req, res) => {
-  try {
-    const [rows] = await pool.query("SELECT * FROM users");
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      <main>
+        <h1 className="text-3xl font-bold p-4">Campus Events</h1>
 
-// ---------------- FEEDBACK ----------------
-app.get("/api/feedback", async (req, res) => {
-  try {
-    const [msgs] = await pool.query(
-      "SELECT * FROM feedback ORDER BY timestamp DESC"
-    );
+        <div className="grid grid-cols-3 gap-4 p-4">
+          {events.map((event) => (
+            <EventCard
+              key={event.id}
+              event={event}
+              onClick={setSelectedEvent}
+            />
+          ))}
+        </div>
+      </main>
 
-    for (let m of msgs) {
-      const [replies] = await pool.query(
-        "SELECT * FROM replies WHERE feedback_id=?",
-        [m.id]
-      );
-      m.replies = replies;
-    }
+      <Footer homeConfig={homeConfig} theme={theme} />
 
-    res.json(msgs);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
+      {selectedEvent && (
+        <EventModal
+          event={selectedEvent}
+          onClose={() => setSelectedEvent(null)}
+        />
+      )}
 
-app.post("/api/feedback", async (req, res) => {
-  try {
-    const m = req.body;
+      {isLoginModalOpen && (
+        <LoginModal
+          onClose={() => setIsLoginModalOpen(false)}
+          usersList={usersList}
+        />
+      )}
+    </div>
+  );
+};
 
-    await pool.query(
-      `INSERT INTO feedback
-      (id,senderName,senderEmail,subject,message,timestamp,status)
-      VALUES (?,?,?,?,?,?,?)`,
-      [
-        m.id,
-        m.senderName,
-        m.senderEmail,
-        m.subject,
-        m.message,
-        m.timestamp,
-        m.status || "new",
-      ]
-    );
+const App = () => (
+  <AuthProvider>
+    <CampusApp />
+  </AuthProvider>
+);
 
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------- AUDIT ----------------
-app.get("/api/audit", async (req, res) => {
-  try {
-    const [rows] = await pool.query(
-      "SELECT * FROM audit_logs ORDER BY timestamp DESC"
-    );
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/audit", async (req, res) => {
-  try {
-    const l = req.body;
-
-    await pool.query(
-      `INSERT INTO audit_logs
-      (id,timestamp,action,actor,type,details)
-      VALUES (?,?,?,?,?,?)`,
-      [l.id, l.timestamp, l.action, l.actor, l.type, l.details]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// FRONTEND fallback
-app.get("*", (req, res) => {
-  res.sendFile(path.join(__dirname, "dist", "index.html"));
-});
-
-// START SERVER
-app.listen(PORT, () => {
-  console.log("🚀 Server running on port", PORT);
-});
+export default App;
