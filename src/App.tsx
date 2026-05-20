@@ -9,7 +9,6 @@ import FeedbackModal from './components/FeedbackModal';
 import StudentSupport from './components/StudentSupport';
 import EventRequestModal from './components/EventRequestModal';
 import Footer from './components/Footer';
-import { mockEvents as initialMockEvents } from './data/mockEvents';
 import { CampusEvent, FeedbackMessage, User, AuditLog } from './types';
 import { Sparkles, TrendingUp, Clock, LayoutGrid, Calendar as CalendarIcon, MessageSquare } from 'lucide-react';
 import { cn } from './utils/cn';
@@ -33,73 +32,32 @@ const CampusApp: React.FC = () => {
   const [isStudentSupportOpen, setIsStudentSupportOpen] = useState(false);
   const [isAdminDashboardOpen, setIsAdminDashboardOpen] = useState(false);
 
-  // Persistence State
-  const [categories, setCategories] = useState<string[]>(() => {
-    const saved = localStorage.getItem('cp_categories');
-    return saved ? JSON.parse(saved) : ['Academic', 'Social', 'Sports', 'Workshops', 'Career', 'Arts', 'Tech'];
-  });
-  const [messages, setMessages] = useState<FeedbackMessage[]>(() => {
-    const saved = localStorage.getItem('cp_messages');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [usersList, setUsersList] = useState<User[]>(() => {
-    const saved = localStorage.getItem('authorized_nodes');
-    return saved ? JSON.parse(saved) : [
-      { id: 'u1', name: 'Master Admin', email: 'master@campus.edu', password: 'master', role: 'MasterAdmin', avatar: 'https://i.pravatar.cc/150?u=master' },
-      { id: 'u2', name: 'Alex Johnson', email: 'alex@student.edu', password: 'student', role: 'Student', avatar: 'https://i.pravatar.cc/150?u=alex' },
-      { id: 'u3', name: 'Staff Admin', email: 'admin@campus.edu', password: 'admin', role: 'Admin', avatar: 'https://i.pravatar.cc/150?u=admin' },
-    ];
-  });
-  const [auditLogs, setAuditLogs] = useState<AuditLog[]>(() => {
-    const saved = localStorage.getItem('cp_logs');
-    return saved ? JSON.parse(saved) : [];
-  });
-  const [events, setEvents] = useState<CampusEvent[]>(() => {
-    const saved = localStorage.getItem('cp_events');
-    return saved ? JSON.parse(saved) : initialMockEvents;
-  });
-  const [homeConfig, setHomeConfig] = useState(() => {
-    const saved = localStorage.getItem('cp_config');
-    return saved ? JSON.parse(saved) : {
-      heroHeadline: 'Your Campus. All in One Place.',
-      heroSubheadline: 'Discover workshops, games, performances, and everything in between. Never miss a beat of campus life.',
-      heroImage: 'https://images.unsplash.com/photo-1541339907198-e08756ebafe3?auto=format&fit=crop&q=80&w=2000',
-      footerText: 'The central hub for everything happening on campus. Discover, plan, and connect with your community.',
-      campusName: 'CampusPulse',
-      primaryColor: '#4f46e5',
-      logoImage: '',
-      socialLinks: [
-        { platform: 'Twitter', handle: '@campus_pulse_twitter', visible: true },
-        { platform: 'Instagram', handle: '@campus_pulse_instagram', visible: true },
-        { platform: 'Github', handle: '@campus_pulse_github', visible: true }
-      ],
-      exploreTitle: 'Explore',
-      exploreLinks: [
-        { label: 'All Events', url: '#' },
-        { label: 'Student Clubs', url: '#' },
-        { label: 'Campus Map', url: '#' },
-        { label: 'Resources', url: '#' }
-      ],
-      supportTitle: 'Support',
-      supportLinks: [
-        { label: 'Help Center', url: '#' },
-        { label: 'Safety Guide', url: '#' },
-        { label: 'Report Issue', url: '#' },
-        { label: 'Feedback', url: '#' }
-      ]
-    };
+  // Strictly Database-Driven State
+  const [categories, setCategories] = useState<string[]>(['Academic', 'Social', 'Sports', 'Workshops', 'Career', 'Arts', 'Tech']);
+  const [messages, setMessages] = useState<FeedbackMessage[]>([]);
+  const [usersList, setUsersList] = useState<User[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [events, setEvents] = useState<CampusEvent[]>([]);
+  const [homeConfig, setHomeConfig] = useState({
+    heroHeadline: 'Initializing Campus Protocals...',
+    heroSubheadline: 'Synchronizing with Aiven Cloud Database Node...',
+    heroImage: '',
+    footerText: '',
+    campusName: 'CampusPulse',
+    primaryColor: '#4f46e5',
+    logoImage: '',
+    socialLinks: [],
+    exploreTitle: 'Explore',
+    exploreLinks: [],
+    supportTitle: 'Support',
+    supportLinks: []
   });
 
+  // Removed local persistence to ensure strict database synchronization
+  // Data is now fetched exclusively from the Aiven MySQL Node every 5 seconds
   useEffect(() => {
-    if (isLoaded) {
-      localStorage.setItem('cp_events', JSON.stringify(events));
-      localStorage.setItem('authorized_nodes', JSON.stringify(usersList));
-      localStorage.setItem('cp_messages', JSON.stringify(messages));
-      localStorage.setItem('cp_logs', JSON.stringify(auditLogs));
-      localStorage.setItem('cp_config', JSON.stringify(homeConfig));
-      localStorage.setItem('cp_categories', JSON.stringify(categories));
-    }
-  }, [events, usersList, messages, auditLogs, homeConfig, categories, isLoaded]);
+    // Session persistence remains for user login convenience
+  }, []);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -121,31 +79,28 @@ const CampusApp: React.FC = () => {
           safeFetch('config')
         ]);
         
-        // Database is the sole Source of Truth
-        // Only update if we received a valid array/object from the server
-        if (Array.isArray(ev)) {
-          setEvents(ev.length > 0 ? ev : []); 
-        }
-        
-        if (Array.isArray(users) && users.length > 0) {
-          setUsersList(users);
-        }
-
+        // STRICT DATABASE SYNC: Only show what is in the MySQL database
+        if (Array.isArray(ev)) setEvents(ev);
+        if (Array.isArray(users)) setUsersList(users);
         if (Array.isArray(msg)) setMessages(msg);
         if (Array.isArray(logs)) setAuditLogs(logs);
         
         if (config && Object.keys(config).length > 0) {
           const parsedConfig = { ...config };
           try {
-            if (typeof config.socialLinks === 'string') parsedConfig.socialLinks = JSON.parse(config.socialLinks);
-            if (typeof config.exploreLinks === 'string') parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
-            if (typeof config.supportLinks === 'string') parsedConfig.supportLinks = JSON.parse(config.supportLinks);
+            if (typeof config.socialLinks === 'string' && config.socialLinks) parsedConfig.socialLinks = JSON.parse(config.socialLinks);
+            if (typeof config.exploreLinks === 'string' && config.exploreLinks) parsedConfig.exploreLinks = JSON.parse(config.exploreLinks);
+            if (typeof config.supportLinks === 'string' && config.supportLinks) parsedConfig.supportLinks = JSON.parse(config.supportLinks);
           } catch (e) { console.error('CMS Parsing Error:', e); }
           setHomeConfig(parsedConfig);
         }
         
       } catch (err) {
-        console.error('DATABASE NODE SYNC FAILURE.');
+        console.error('CRITICAL ERROR: Campus Node Disconnected from MySQL database.');
+        setEvents([]);
+        setUsersList([]);
+        setMessages([]);
+        setAuditLogs([]);
       }
       setIsLoaded(true);
     };
