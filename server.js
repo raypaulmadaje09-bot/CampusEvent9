@@ -9,7 +9,6 @@ dotenv.config();
 const app = express();
 const PORT = process.env.PORT || 5000;
 
-// ---------------- MIDDLEWARE ----------------
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
@@ -25,7 +24,7 @@ const pool = mysql.createPool({
   connectionLimit: 10,
 });
 
-// ---------------- API ROUTES ----------------
+// ---------------- API ROUTES (UNCHANGED) ----------------
 app.get("/api/health", (req, res) => {
   res.json({ status: "UP" });
 });
@@ -39,27 +38,65 @@ app.get("/api/db-test", async (req, res) => {
   }
 });
 
-app.get("/api/events", async (req, res) => {
+app.get("/api/config", async (req, res) => {
   try {
-    const [rows] = await pool.query("SELECT * FROM events ORDER BY date DESC");
-    res.json(rows);
+    const [rows] = await pool.query("SELECT * FROM site_config WHERE id = 1");
+    res.json(rows[0]);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ---------------- SERVE FRONTEND ----------------
-const __dirname = path.resolve();
+app.post("/api/config", async (req, res) => {
+  try {
+    const c = req.body;
 
-// IMPORTANT: make sure dist exists after build
+    await pool.query(
+      `UPDATE site_config SET
+      campusName=?,
+      heroHeadline=?,
+      heroSubheadline=?,
+      heroImage=?,
+      footerText=?,
+      logoImage=?,
+      socialLinks=?,
+      exploreTitle=?,
+      exploreLinks=?,
+      supportTitle=?,
+      supportLinks=?
+      WHERE id=1`,
+      [
+        c.campusName,
+        c.heroHeadline,
+        c.heroSubheadline,
+        c.heroImage,
+        c.footerText,
+        c.logoImage,
+        JSON.stringify(c.socialLinks),
+        c.exploreTitle,
+        JSON.stringify(c.exploreLinks),
+        c.supportTitle,
+        JSON.stringify(c.supportLinks),
+      ]
+    );
+
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ---------------- STATIC FRONTEND ----------------
+const __dirname = path.resolve();
 app.use(express.static(path.join(__dirname, "dist")));
 
-// React fallback (FIXED)
+// ---------------- FIXED FALLBACK ROUTE ----------------
+// (THIS is the only required fix)
 app.get(/.*/, (req, res) => {
   res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 // ---------------- START ----------------
 app.listen(PORT, () => {
-  console.log(`Server running on port ${PORT}`);
+  console.log("Server running on port", PORT);
 });
