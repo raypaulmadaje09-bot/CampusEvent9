@@ -2,17 +2,23 @@ import express from "express";
 import cors from "cors";
 import mysql from "mysql2/promise";
 import dotenv from "dotenv";
+import path from "path";
+import { fileURLToPath } from "url";
 
 dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
 
+// ---------------- FIX __dirname (REQUIRED) ----------------
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
+
 // ---------------- MIDDLEWARE ----------------
 app.use(cors());
 app.use(express.json({ limit: "50mb" }));
 
-// ---------------- MYSQL CONNECTION POOL ----------------
+// ---------------- MYSQL POOL ----------------
 const pool = mysql.createPool({
   host: process.env.DB_HOST,
   user: process.env.DB_USER,
@@ -27,24 +33,20 @@ const pool = mysql.createPool({
   queueLimit: 0,
 });
 
-// ---------------- HEALTH CHECK ----------------
+// ---------------- API ROUTES ----------------
+
+// Health check
 app.get("/api/health", (req, res) => {
   res.json({ status: "UP" });
 });
 
-// ---------------- DB TEST ----------------
+// DB test
 app.get("/api/db-test", async (req, res) => {
   try {
     const [rows] = await pool.query("SELECT 1 + 1 AS result");
-    res.json({
-      db: "connected",
-      result: rows[0].result,
-    });
+    res.json({ db: "connected", result: rows[0].result });
   } catch (err) {
-    res.status(500).json({
-      db: "failed",
-      error: err.message,
-    });
+    res.status(500).json({ db: "failed", error: err.message });
   }
 });
 
@@ -86,7 +88,7 @@ app.post("/api/events", async (req, res) => {
       ]
     );
 
-    res.json({ success: true, id: e.id });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -178,58 +180,7 @@ app.get("/api/feedback", async (req, res) => {
   }
 });
 
-app.post("/api/feedback", async (req, res) => {
-  try {
-    const f = req.body;
-
-    await pool.query(
-      `INSERT INTO feedback 
-      (id,senderName,senderEmail,recipientId,subject,message,timestamp,status)
-      VALUES (?,?,?,?,?,?,?,?)`,
-      [
-        f.id,
-        f.senderName,
-        f.senderEmail,
-        f.recipientId,
-        f.subject,
-        f.message,
-        f.timestamp,
-        f.status || "new",
-      ]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.post("/api/feedback/:id/reply", async (req, res) => {
-  try {
-    const reply = req.body;
-    const { id } = req.params;
-
-    await pool.query(
-      `INSERT INTO replies 
-      (id, feedback_id, sender, senderName, text, timestamp)
-      VALUES (?,?,?,?,?,?)`,
-      [
-        Math.random().toString(36).substr(2, 9),
-        id,
-        reply.sender,
-        reply.senderName,
-        reply.text,
-        reply.timestamp,
-      ]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ---------------- AUDIT LOGS ----------------
+// ---------------- AUDIT ----------------
 app.get("/api/audit", async (req, res) => {
   try {
     const [rows] = await pool.query(
@@ -241,80 +192,24 @@ app.get("/api/audit", async (req, res) => {
   }
 });
 
-app.post("/api/audit", async (req, res) => {
-  try {
-    const log = req.body;
-
-    await pool.query(
-      `INSERT INTO audit_logs 
-      (id,timestamp,type,action,actor,details)
-      VALUES (?,?,?,?,?,?)`,
-      [
-        log.id,
-        log.timestamp,
-        log.type,
-        log.action,
-        log.actor,
-        log.details,
-      ]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ---------------- CONFIG ----------------
 app.get("/api/config", async (req, res) => {
   try {
     const [rows] = await pool.query(
       "SELECT * FROM site_config WHERE id=1"
     );
-
     res.json(rows[0] || {});
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post("/api/config", async (req, res) => {
-  try {
-    const c = req.body;
+// ---------------- STATIC REACT BUILD ----------------
+app.use(express.static(path.join(__dirname, "dist")));
 
-    await pool.query(
-      `UPDATE site_config SET
-        campusName=?,
-        heroHeadline=?,
-        heroSubheadline=?,
-        heroImage=?,
-        footerText=?,
-        logoImage=?,
-        socialLinks=?,
-        exploreTitle=?,
-        exploreLinks=?,
-        supportTitle=?,
-        supportLinks=?
-      WHERE id=1`,
-      [
-        c.campusName,
-        c.heroHeadline,
-        c.heroSubheadline,
-        c.heroImage,
-        c.footerText,
-        c.logoImage,
-        JSON.stringify(c.socialLinks),
-        c.exploreTitle,
-        JSON.stringify(c.exploreLinks),
-        c.supportTitle,
-        JSON.stringify(c.supportLinks),
-      ]
-    );
-
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
+// ---------------- FIX "Cannot GET /" ----------------
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "dist", "index.html"));
 });
 
 // ---------------- START SERVER ----------------
